@@ -384,20 +384,6 @@ export default function AITextScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <ThemedText style={styles.title}>AI Text Generator</ThemedText>
-            <TouchableOpacity
-              style={styles.settingsButton}
-              onPress={() => setShowSettings(true)}
-            >
-              <MaterialCommunityIcons
-                name="cog"
-                size={24}
-                color={Colors[colorScheme ?? "light"].text}
-              />
-            </TouchableOpacity>
-          </View>
-
           <TouchableOpacity
             style={styles.modelBadge}
             onPress={() => setShowSettings(true)}
@@ -706,19 +692,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-  },
-  settingsButton: {
-    padding: 8,
   },
   modelBadge: {
     flexDirection: "row",
