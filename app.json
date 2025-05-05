@@ -9,14 +9,20 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.utkarshs7.steps",
+      "infoPlist": {
+        "NSPhotoLibraryAddUsageDescription": "We need access to save AI-generated images to your photo library.",
+        "NSPhotoLibraryUsageDescription": "We need access to save AI-generated images to your photo library."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": ["WRITE_EXTERNAL_STORAGE"]
     },
     "web": {
       "bundler": "metro",
