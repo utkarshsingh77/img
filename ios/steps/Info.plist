@@ -45,6 +45,10 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
+    <key>NSHealthShareUsageDescription</key>
+    <string>We need access to your health data to count and display your steps accurately.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>We need permission to update your health data to track your steps.</string>
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>

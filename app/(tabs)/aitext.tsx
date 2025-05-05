@@ -1,10 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import * as FileSystem from "expo-file-system";
+import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { Image } from "expo-image";
-import * as Sharing from "expo-sharing";
 import OpenAI from "openai";
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,13 +13,11 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import ViewShot from "react-native-view-shot";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -40,28 +36,23 @@ const openai = new OpenAI({
 // Grok API configuration
 const GROK_API_KEY =
   "xai-mHBFUZoQPDXWaNqiZJcV5O8PNdI1oplTg0c44RWDQECffQAQV862RK74AmUfZh2hgM1NSoktOQhLFyCA";
-const GROK_API_URL = "https://api.x.ai/v1/images/generations";
+const GROK_API_URL = "https://api.x.ai/v1/chat/completions";
 
-type ImageModel = "dall-e-3" | "gpt-image-1" | "grok-image";
-type ImageSize = "1024x1024" | "1024x1536" | "1536x1024" | "auto";
-type ImageQuality = "low" | "medium" | "high" | "auto";
-type ImageBackground = "transparent" | "auto";
+type TextModel = "gpt-4o" | "gpt-3.5-turbo" | "grok-3";
+type ContentType = "tweet" | "joke" | "fact" | "custom";
 
-export default function AIImageScreen() {
+export default function AITextScreen() {
   const [prompt, setPrompt] = useState("");
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [generatedText, setGeneratedText] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [recentPrompts, setRecentPrompts] = useState<string[]>([]);
-  const [model, setModel] = useState<ImageModel>("dall-e-3");
+  const [model, setModel] = useState<TextModel>("gpt-3.5-turbo");
+  const [contentType, setContentType] = useState<ContentType>("tweet");
   const [showSettings, setShowSettings] = useState(false);
-  const [imageSize, setImageSize] = useState<ImageSize>("1024x1024");
-  const [imageQuality, setImageQuality] = useState<ImageQuality>("auto");
-  const [transparentBackground, setTransparentBackground] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-  const viewShotRef = useRef<ViewShot>(null);
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const slideAnim = React.useRef(new Animated.Value(50)).current;
   const colorScheme = useColorScheme();
   const { bottom } = useSafeAreaInsets();
 
@@ -85,7 +76,22 @@ export default function AIImageScreen() {
     ]).start();
   };
 
-  const generateImageWithGrok = async () => {
+  const getContentTypePrompt = (userPrompt: string) => {
+    switch (contentType) {
+      case "tweet":
+        return `Write a Twitter/X post (max 280 characters) about: ${userPrompt}. Make it engaging and shareable.`;
+      case "joke":
+        return `Write a short joke about: ${userPrompt}. Keep it clean and clever.`;
+      case "fact":
+        return `Share a brief educational fact about: ${userPrompt}. Make it interesting and informative.`;
+      case "custom":
+        return userPrompt;
+      default:
+        return userPrompt;
+    }
+  };
+
+  const generateTextWithGrok = async (formattedPrompt: string) => {
     try {
       const response = await fetch(GROK_API_URL, {
         method: "POST",
@@ -94,10 +100,18 @@ export default function AIImageScreen() {
           Authorization: `Bearer ${GROK_API_KEY}`,
         },
         body: JSON.stringify({
-          prompt: prompt,
-          n: 1,
-          size: imageSize,
-          model: "grok-image-latest",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You generate short-form content that is concise, creative, and engaging.",
+            },
+            { role: "user", content: formattedPrompt },
+          ],
+          model: "grok-3-latest",
+          stream: false,
+          temperature: 0.7,
+          max_tokens: 300,
         }),
       });
 
@@ -106,14 +120,14 @@ export default function AIImageScreen() {
       }
 
       const data = await response.json();
-      return data.data?.[0]?.url || null;
+      return data.choices[0]?.message?.content;
     } catch (error) {
       console.error("Error with Grok API:", error);
       throw error;
     }
   };
 
-  const generateImage = async () => {
+  const generateText = async () => {
     if (!prompt.trim()) {
       Alert.alert("Please enter a prompt");
       return;
@@ -125,57 +139,45 @@ export default function AIImageScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setIsGenerating(true);
 
-      let imageUrl = null;
+      const formattedPrompt = getContentTypePrompt(prompt);
+      let generatedContent;
 
-      if (model === "grok-image") {
-        // Use Grok for image generation
-        imageUrl = await generateImageWithGrok();
-      } else if (model === "dall-e-3") {
-        // Use DALL-E 3
-        const response = await openai.images.generate({
-          model: "dall-e-3",
-          prompt: prompt,
-          n: 1,
-          size: "1024x1024",
-          response_format: "url",
+      if (model === "grok-3") {
+        // Use Grok API
+        generatedContent = await generateTextWithGrok(formattedPrompt);
+      } else {
+        // Use OpenAI API
+        const response = await openai.chat.completions.create({
+          model: model,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You generate short-form content that is concise, creative, and engaging.",
+            },
+            { role: "user", content: formattedPrompt },
+          ],
+          max_tokens: 300,
+          temperature: 0.7,
         });
 
-        imageUrl = response?.data?.[0]?.url;
-      } else if (model === "gpt-image-1") {
-        // Use GPT Image
-        const response = await openai.images.generate({
-          model: "gpt-image-1",
-          prompt: prompt,
-          n: 1,
-          size: imageSize,
-          quality: imageQuality,
-          background: transparentBackground ? "transparent" : "auto",
-        });
-
-        imageUrl = response?.data?.[0]?.url;
-
-        if (!imageUrl) {
-          const b64Json = response?.data?.[0]?.b64_json;
-          if (b64Json) {
-            imageUrl = `data:image/png;base64,${b64Json}`;
-          }
-        }
+        generatedContent = response.choices[0]?.message?.content;
       }
 
-      if (imageUrl) {
-        setGeneratedImage(imageUrl);
+      if (generatedContent) {
+        setGeneratedText(generatedContent.trim());
         setRecentPrompts((prev) => [prompt, ...prev.slice(0, 4)]);
         setPrompt("");
         setTimeout(animateCard, 100);
       } else {
-        throw new Error(`No image URL returned from ${model}`);
+        throw new Error("No text content returned from the API");
       }
     } catch (error) {
-      console.error("Error generating image:", error);
+      console.error("Error generating text:", error);
       const errorMessage =
         error instanceof Error
           ? error.message
-          : "Failed to generate image. Please try again.";
+          : "Failed to generate text. Please try again.";
       setError(errorMessage);
       Alert.alert("Error", errorMessage);
     } finally {
@@ -183,67 +185,16 @@ export default function AIImageScreen() {
     }
   };
 
-  const shareImage = async () => {
-    if (!generatedImage || !viewShotRef.current) return;
+  const copyToClipboard = async () => {
+    if (!generatedText) return;
 
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const uri = await viewShotRef.current?.capture?.();
-
-      if (!uri) {
-        throw new Error("Failed to capture image");
-      }
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri);
-      } else {
-        Alert.alert("Sharing not available");
-      }
+      await Clipboard.setStringAsync(generatedText);
+      Alert.alert("Copied to clipboard!");
     } catch (error) {
-      console.error("Error sharing image:", error);
-      Alert.alert("Error", "Failed to share image");
-    }
-  };
-
-  const saveImage = async () => {
-    if (!generatedImage || !viewShotRef.current) return;
-
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-      // First capture the image from ViewShot
-      const uri = await viewShotRef.current?.capture?.();
-
-      if (!uri) {
-        throw new Error("Failed to capture image");
-      }
-
-      // Save to media library using Expo sharing
-      if (Platform.OS === "ios") {
-        // On iOS, use sharing to save to camera roll
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri, {
-            mimeType: "image/png",
-            dialogTitle: "Save AI-Generated Image",
-            UTI: "public.png",
-          });
-        } else {
-          Alert.alert("Error", "Sharing is not available on this device");
-        }
-      } else {
-        // On Android, save directly to file system
-        const fileUri = `${
-          FileSystem.documentDirectory
-        }ai-image-${Date.now()}.png`;
-        await FileSystem.copyAsync({
-          from: uri,
-          to: fileUri,
-        });
-        Alert.alert("Success", "Image saved to your device");
-      }
-    } catch (error) {
-      console.error("Error saving image:", error);
-      Alert.alert("Error", "Failed to save image");
+      console.error("Error copying text:", error);
+      Alert.alert("Error", "Failed to copy text");
     }
   };
 
@@ -251,7 +202,7 @@ export default function AIImageScreen() {
     setPrompt(selectedPrompt);
   };
 
-  const toggleModel = (newModel: ImageModel) => {
+  const toggleModel = (newModel: TextModel) => {
     setModel(newModel);
   };
 
@@ -294,16 +245,16 @@ export default function AIImageScreen() {
                   <TouchableOpacity
                     style={[
                       styles.modelOption,
-                      model === "dall-e-3" && styles.modelOptionSelected,
+                      model === "gpt-4o" && styles.modelOptionSelected,
                     ]}
-                    onPress={() => toggleModel("dall-e-3")}
+                    onPress={() => toggleModel("gpt-4o")}
                   >
                     <View style={styles.modelContent}>
                       <MaterialCommunityIcons
-                        name="image-filter-hdr"
+                        name="robot"
                         size={22}
                         color={
-                          model === "dall-e-3"
+                          model === "gpt-4o"
                             ? "#fff"
                             : Colors[colorScheme ?? "light"].text
                         }
@@ -311,10 +262,10 @@ export default function AIImageScreen() {
                       <ThemedText
                         style={[
                           styles.modelText,
-                          model === "dall-e-3" && styles.modelTextSelected,
+                          model === "gpt-4o" && styles.modelTextSelected,
                         ]}
                       >
-                        DALL-E 3
+                        GPT-4o
                       </ThemedText>
                     </View>
                   </TouchableOpacity>
@@ -322,16 +273,16 @@ export default function AIImageScreen() {
                   <TouchableOpacity
                     style={[
                       styles.modelOption,
-                      model === "gpt-image-1" && styles.modelOptionSelected,
+                      model === "gpt-3.5-turbo" && styles.modelOptionSelected,
                     ]}
-                    onPress={() => toggleModel("gpt-image-1")}
+                    onPress={() => toggleModel("gpt-3.5-turbo")}
                   >
                     <View style={styles.modelContent}>
                       <MaterialCommunityIcons
-                        name="image-edit"
+                        name="robot-outline"
                         size={22}
                         color={
-                          model === "gpt-image-1"
+                          model === "gpt-3.5-turbo"
                             ? "#fff"
                             : Colors[colorScheme ?? "light"].text
                         }
@@ -339,10 +290,10 @@ export default function AIImageScreen() {
                       <ThemedText
                         style={[
                           styles.modelText,
-                          model === "gpt-image-1" && styles.modelTextSelected,
+                          model === "gpt-3.5-turbo" && styles.modelTextSelected,
                         ]}
                       >
-                        GPT Image
+                        GPT-3.5 Turbo
                       </ThemedText>
                     </View>
                   </TouchableOpacity>
@@ -351,17 +302,17 @@ export default function AIImageScreen() {
                 <TouchableOpacity
                   style={[
                     styles.modelOption,
-                    model === "grok-image" && styles.modelOptionSelected,
+                    model === "grok-3" && styles.modelOptionSelected,
                     { marginTop: 10 },
                   ]}
-                  onPress={() => toggleModel("grok-image")}
+                  onPress={() => toggleModel("grok-3")}
                 >
                   <View style={styles.modelContent}>
                     <MaterialCommunityIcons
                       name="lightning-bolt"
                       size={22}
                       color={
-                        model === "grok-image"
+                        model === "grok-3"
                           ? "#fff"
                           : Colors[colorScheme ?? "light"].text
                       }
@@ -369,186 +320,22 @@ export default function AIImageScreen() {
                     <ThemedText
                       style={[
                         styles.modelText,
-                        model === "grok-image" && styles.modelTextSelected,
+                        model === "grok-3" && styles.modelTextSelected,
                       ]}
                     >
-                      Grok Image
+                      Grok-3
                     </ThemedText>
                   </View>
                 </TouchableOpacity>
 
                 <ThemedText style={styles.modelDescription}>
-                  {model === "dall-e-3"
-                    ? "Photorealistic images with precise details."
-                    : model === "gpt-image-1"
-                    ? "More customizable with transparent backgrounds & aspect ratios."
-                    : "Grok Image by xAI - Advanced image creation capabilities."}
+                  {model === "gpt-4o"
+                    ? "More capable for complex and creative content."
+                    : model === "gpt-3.5-turbo"
+                    ? "Faster and more efficient for simple content generation."
+                    : "Grok-3 by xAI - Innovative AI with advanced reasoning abilities."}
                 </ThemedText>
               </ThemedView>
-
-              {(model === "gpt-image-1" || model === "grok-image") && (
-                <>
-                  <ThemedView style={styles.settingSection}>
-                    <ThemedText style={styles.settingTitle}>
-                      Image Size
-                    </ThemedText>
-                    <View style={styles.optionsRow}>
-                      <TouchableOpacity
-                        style={[
-                          styles.option,
-                          imageSize === "1024x1024" && styles.optionSelected,
-                        ]}
-                        onPress={() => setImageSize("1024x1024")}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.optionText,
-                            imageSize === "1024x1024" &&
-                              styles.optionTextSelected,
-                          ]}
-                        >
-                          Square
-                        </ThemedText>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.option,
-                          imageSize === "1024x1536" && styles.optionSelected,
-                        ]}
-                        onPress={() => setImageSize("1024x1536")}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.optionText,
-                            imageSize === "1024x1536" &&
-                              styles.optionTextSelected,
-                          ]}
-                        >
-                          Portrait
-                        </ThemedText>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.option,
-                          imageSize === "1536x1024" && styles.optionSelected,
-                        ]}
-                        onPress={() => setImageSize("1536x1024")}
-                      >
-                        <ThemedText
-                          style={[
-                            styles.optionText,
-                            imageSize === "1536x1024" &&
-                              styles.optionTextSelected,
-                          ]}
-                        >
-                          Landscape
-                        </ThemedText>
-                      </TouchableOpacity>
-                    </View>
-                  </ThemedView>
-
-                  {model === "gpt-image-1" && (
-                    <>
-                      <ThemedView style={styles.settingSection}>
-                        <ThemedText style={styles.settingTitle}>
-                          Quality
-                        </ThemedText>
-                        <View style={styles.optionsRow}>
-                          <TouchableOpacity
-                            style={[
-                              styles.option,
-                              imageQuality === "low" && styles.optionSelected,
-                            ]}
-                            onPress={() => setImageQuality("low")}
-                          >
-                            <ThemedText
-                              style={[
-                                styles.optionText,
-                                imageQuality === "low" &&
-                                  styles.optionTextSelected,
-                              ]}
-                            >
-                              Low
-                            </ThemedText>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.option,
-                              imageQuality === "medium" &&
-                                styles.optionSelected,
-                            ]}
-                            onPress={() => setImageQuality("medium")}
-                          >
-                            <ThemedText
-                              style={[
-                                styles.optionText,
-                                imageQuality === "medium" &&
-                                  styles.optionTextSelected,
-                              ]}
-                            >
-                              Medium
-                            </ThemedText>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.option,
-                              imageQuality === "high" && styles.optionSelected,
-                            ]}
-                            onPress={() => setImageQuality("high")}
-                          >
-                            <ThemedText
-                              style={[
-                                styles.optionText,
-                                imageQuality === "high" &&
-                                  styles.optionTextSelected,
-                              ]}
-                            >
-                              High
-                            </ThemedText>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.option,
-                              imageQuality === "auto" && styles.optionSelected,
-                            ]}
-                            onPress={() => setImageQuality("auto")}
-                          >
-                            <ThemedText
-                              style={[
-                                styles.optionText,
-                                imageQuality === "auto" &&
-                                  styles.optionTextSelected,
-                              ]}
-                            >
-                              Auto
-                            </ThemedText>
-                          </TouchableOpacity>
-                        </View>
-                      </ThemedView>
-
-                      <ThemedView style={styles.settingSection}>
-                        <View style={styles.settingRow}>
-                          <ThemedText style={styles.settingTitle}>
-                            Transparent Background
-                          </ThemedText>
-                          <Switch
-                            value={transparentBackground}
-                            onValueChange={setTransparentBackground}
-                            trackColor={{
-                              false: "#ccc",
-                              true: Colors[colorScheme ?? "light"].tint,
-                            }}
-                            thumbColor={
-                              Platform.OS === "ios" ? undefined : "#fff"
-                            }
-                            ios_backgroundColor="#ccc"
-                          />
-                        </View>
-                      </ThemedView>
-                    </>
-                  )}
-                </>
-              )}
             </ScrollView>
 
             <TouchableOpacity
@@ -565,27 +352,11 @@ export default function AIImageScreen() {
     );
   };
 
-  const isValidImage = (url: string | null): boolean => {
-    if (!url) return false;
-
-    // Check if it's a valid URL
-    if (url.startsWith("http://") || url.startsWith("https://")) {
-      return true;
-    }
-
-    // Check if it's a valid data URI
-    if (url.startsWith("data:image/")) {
-      return true;
-    }
-
-    return false;
-  };
-
   const ErrorDisplay = () => (
     <View style={styles.errorContainer}>
-      <MaterialCommunityIcons name="image-off" size={40} color="#ff6b6b" />
+      <MaterialCommunityIcons name="alert-circle" size={40} color="#ff6b6b" />
       <ThemedText style={styles.errorText}>
-        {error || "Failed to load image"}
+        {error || "Failed to generate text"}
       </ThemedText>
       <TouchableOpacity
         style={styles.retryButton}
@@ -614,7 +385,7 @@ export default function AIImageScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <ThemedText style={styles.title}>AI Image Generator</ThemedText>
+            <ThemedText style={styles.title}>AI Text Generator</ThemedText>
             <TouchableOpacity
               style={styles.settingsButton}
               onPress={() => setShowSettings(true)}
@@ -633,10 +404,10 @@ export default function AIImageScreen() {
           >
             <MaterialCommunityIcons
               name={
-                model === "dall-e-3"
-                  ? "image-filter-hdr"
-                  : model === "gpt-image-1"
-                  ? "image-edit"
+                model === "gpt-4o"
+                  ? "robot"
+                  : model === "gpt-3.5-turbo"
+                  ? "robot-outline"
                   : "lightning-bolt"
               }
               size={16}
@@ -644,11 +415,11 @@ export default function AIImageScreen() {
             />
             <ThemedText style={styles.modelBadgeText}>
               Using{" "}
-              {model === "dall-e-3"
-                ? "DALL-E 3"
-                : model === "gpt-image-1"
-                ? "GPT Image"
-                : "Grok Image"}
+              {model === "gpt-4o"
+                ? "GPT-4o"
+                : model === "gpt-3.5-turbo"
+                ? "GPT-3.5 Turbo"
+                : "Grok-3"}
             </ThemedText>
             <MaterialCommunityIcons
               name="chevron-right"
@@ -658,9 +429,125 @@ export default function AIImageScreen() {
             />
           </TouchableOpacity>
 
+          <View style={styles.contentTypeContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.contentTypeScroll}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.contentTypeButton,
+                  contentType === "tweet" && styles.contentTypeSelected,
+                ]}
+                onPress={() => setContentType("tweet")}
+              >
+                <MaterialCommunityIcons
+                  name="twitter"
+                  size={18}
+                  color={
+                    contentType === "tweet"
+                      ? "#fff"
+                      : Colors[colorScheme ?? "light"].text
+                  }
+                />
+                <ThemedText
+                  style={[
+                    styles.contentTypeText,
+                    contentType === "tweet" && styles.contentTypeTextSelected,
+                  ]}
+                >
+                  Tweet
+                </ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.contentTypeButton,
+                  contentType === "joke" && styles.contentTypeSelected,
+                ]}
+                onPress={() => setContentType("joke")}
+              >
+                <MaterialCommunityIcons
+                  name="emoticon-happy"
+                  size={18}
+                  color={
+                    contentType === "joke"
+                      ? "#fff"
+                      : Colors[colorScheme ?? "light"].text
+                  }
+                />
+                <ThemedText
+                  style={[
+                    styles.contentTypeText,
+                    contentType === "joke" && styles.contentTypeTextSelected,
+                  ]}
+                >
+                  Joke
+                </ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.contentTypeButton,
+                  contentType === "fact" && styles.contentTypeSelected,
+                ]}
+                onPress={() => setContentType("fact")}
+              >
+                <MaterialCommunityIcons
+                  name="lightbulb"
+                  size={18}
+                  color={
+                    contentType === "fact"
+                      ? "#fff"
+                      : Colors[colorScheme ?? "light"].text
+                  }
+                />
+                <ThemedText
+                  style={[
+                    styles.contentTypeText,
+                    contentType === "fact" && styles.contentTypeTextSelected,
+                  ]}
+                >
+                  Fact
+                </ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.contentTypeButton,
+                  contentType === "custom" && styles.contentTypeSelected,
+                ]}
+                onPress={() => setContentType("custom")}
+              >
+                <MaterialCommunityIcons
+                  name="pencil"
+                  size={18}
+                  color={
+                    contentType === "custom"
+                      ? "#fff"
+                      : Colors[colorScheme ?? "light"].text
+                  }
+                />
+                <ThemedText
+                  style={[
+                    styles.contentTypeText,
+                    contentType === "custom" && styles.contentTypeTextSelected,
+                  ]}
+                >
+                  Custom
+                </ThemedText>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+
           <View style={styles.promptContainer}>
             <ThemedText style={styles.promptLabel}>
-              Enter Your Prompt
+              {contentType === "custom"
+                ? "Enter Your Prompt"
+                : `${
+                    contentType.charAt(0).toUpperCase() + contentType.slice(1)
+                  } Topic`}
             </ThemedText>
             <View style={styles.inputWrapper}>
               <TextInput
@@ -668,7 +555,15 @@ export default function AIImageScreen() {
                   styles.promptInput,
                   { color: Colors[colorScheme ?? "light"].text },
                 ]}
-                placeholder="Describe the image you want to create..."
+                placeholder={
+                  contentType === "tweet"
+                    ? "What would you like a tweet about?"
+                    : contentType === "joke"
+                    ? "What topic would you like a joke about?"
+                    : contentType === "fact"
+                    ? "What topic would you like to learn about?"
+                    : "Describe what you want to generate..."
+                }
                 placeholderTextColor={
                   Colors[colorScheme ?? "light"].tabIconDefault
                 }
@@ -686,7 +581,7 @@ export default function AIImageScreen() {
                 styles.generateButton,
                 { opacity: isGenerating ? 0.7 : 1 },
               ]}
-              onPress={generateImage}
+              onPress={generateText}
               disabled={isGenerating}
               activeOpacity={0.7}
             >
@@ -694,12 +589,17 @@ export default function AIImageScreen() {
                 <View style={styles.loadingRow}>
                   <ActivityIndicator color="#fff" />
                   <ThemedText style={styles.generateButtonText}>
-                    Creating...
+                    Generating...
                   </ThemedText>
                 </View>
               ) : (
                 <ThemedText style={styles.generateButtonText}>
-                  Generate Image
+                  {`Generate ${
+                    contentType === "custom"
+                      ? "Text"
+                      : contentType.charAt(0).toUpperCase() +
+                        contentType.slice(1)
+                  }`}
                 </ThemedText>
               )}
             </TouchableOpacity>
@@ -735,7 +635,7 @@ export default function AIImageScreen() {
           )}
 
           <View style={styles.resultContainer}>
-            <ThemedText style={styles.sectionTitle}>Generated Image</ThemedText>
+            <ThemedText style={styles.sectionTitle}>Generated Text</ThemedText>
 
             {error ? (
               <ErrorDisplay />
@@ -746,73 +646,47 @@ export default function AIImageScreen() {
                   color={Colors[colorScheme ?? "light"].tint}
                 />
                 <ThemedText style={styles.generatingText}>
-                  Creating your image...
+                  Creating your content...
                 </ThemedText>
               </View>
-            ) : generatedImage && isValidImage(generatedImage) ? (
+            ) : generatedText ? (
               <Animated.View
                 style={[
-                  styles.imageCard,
+                  styles.textCard,
                   {
                     opacity: fadeAnim,
                     transform: [{ translateY: slideAnim }],
                   },
                 ]}
               >
-                <ViewShot
-                  ref={viewShotRef}
-                  options={{ format: "png", quality: 0.9 }}
-                >
-                  <Image
-                    source={{ uri: generatedImage }}
-                    style={styles.generatedImage}
-                    contentFit="cover"
-                    transition={300}
-                    onError={() =>
-                      setError("Failed to load the generated image.")
-                    }
-                  />
-                </ViewShot>
+                <ThemedText style={styles.generatedText}>
+                  {generatedText}
+                </ThemedText>
 
-                <View style={styles.imageActions}>
+                <View style={styles.textActions}>
                   <TouchableOpacity
-                    style={styles.imageActionButton}
-                    onPress={shareImage}
+                    style={styles.textActionButton}
+                    onPress={copyToClipboard}
                     activeOpacity={0.7}
                   >
                     <MaterialCommunityIcons
-                      name="share-variant-outline"
+                      name="content-copy"
                       size={22}
                       color={Colors[colorScheme ?? "light"].tint}
                     />
-                    <ThemedText style={styles.actionText}>Share</ThemedText>
-                  </TouchableOpacity>
-
-                  <View style={styles.actionDivider} />
-
-                  <TouchableOpacity
-                    style={styles.imageActionButton}
-                    onPress={saveImage}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialCommunityIcons
-                      name="content-save-outline"
-                      size={22}
-                      color={Colors[colorScheme ?? "light"].tint}
-                    />
-                    <ThemedText style={styles.actionText}>Save</ThemedText>
+                    <ThemedText style={styles.actionText}>Copy</ThemedText>
                   </TouchableOpacity>
                 </View>
               </Animated.View>
             ) : (
               <View style={styles.emptyState}>
                 <MaterialCommunityIcons
-                  name="image-plus"
+                  name="text-box-plus"
                   size={60}
                   color={Colors[colorScheme ?? "light"].tabIconDefault}
                 />
                 <ThemedText style={styles.emptyText}>
-                  Enter a prompt to generate an image
+                  Enter a prompt to generate text
                 </ThemedText>
               </View>
             )}
@@ -854,12 +728,40 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
     alignSelf: "flex-start",
-    marginBottom: 24,
+    marginBottom: 16,
   },
   modelBadgeText: {
     fontSize: 13,
     fontWeight: "500",
     marginLeft: 6,
+  },
+  contentTypeContainer: {
+    marginBottom: 20,
+  },
+  contentTypeScroll: {
+    paddingRight: 20,
+  },
+  contentTypeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: "rgba(10, 126, 164, 0.1)",
+  },
+  contentTypeSelected: {
+    backgroundColor: "#0a7ea4",
+    borderColor: "#0a7ea4",
+  },
+  contentTypeText: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginLeft: 6,
+  },
+  contentTypeTextSelected: {
+    color: "white",
   },
   promptContainer: {
     marginBottom: 24,
@@ -935,7 +837,7 @@ const styles = StyleSheet.create({
   generatingContainer: {
     alignItems: "center",
     justifyContent: "center",
-    height: 300,
+    height: 200,
     backgroundColor: "rgba(10, 126, 164, 0.04)",
     borderRadius: 16,
     marginBottom: 16,
@@ -945,7 +847,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     opacity: 0.7,
   },
-  imageCard: {
+  textCard: {
     borderRadius: 16,
     overflow: "hidden",
     backgroundColor: "white",
@@ -954,20 +856,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+    padding: 20,
   },
-  generatedImage: {
-    width: "100%",
-    aspectRatio: 1,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+  generatedText: {
+    fontSize: 16,
+    lineHeight: 24,
   },
-  imageActions: {
+  textActions: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-    justifyContent: "space-around",
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0, 0, 0, 0.05)",
   },
-  imageActionButton: {
+  textActionButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
@@ -978,16 +881,10 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontWeight: "500",
   },
-  actionDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: "rgba(0, 0, 0, 0.1)",
-    marginHorizontal: 8,
-  },
   emptyState: {
     alignItems: "center",
     justifyContent: "center",
-    height: 300,
+    height: 200,
     backgroundColor: "rgba(10, 126, 164, 0.04)",
     borderRadius: 16,
     paddingHorizontal: 30,
@@ -1006,7 +903,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 100, 100, 0.08)",
     borderRadius: 16,
     marginBottom: 16,
-    height: 300,
+    height: 200,
   },
   errorText: {
     marginVertical: 12,
@@ -1091,28 +988,6 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     lineHeight: 20,
     marginBottom: 8,
-  },
-  optionsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  option: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(0, 0, 0, 0.1)",
-  },
-  optionSelected: {
-    backgroundColor: "#0a7ea4",
-    borderColor: "#0a7ea4",
-  },
-  optionText: {
-    fontWeight: "500",
-  },
-  optionTextSelected: {
-    color: "white",
   },
   applyButton: {
     backgroundColor: "#0a7ea4",

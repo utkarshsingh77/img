@@ -8,6 +8,7 @@ import {
   FlatList,
   Modal,
   RefreshControl,
+  ScrollView,
   StatusBar,
   StyleSheet,
   TouchableOpacity,
@@ -30,7 +31,7 @@ import {
   userPreferencesService,
 } from "@/services/userPreferencesService";
 
-// Sample data as fallback
+// Updated sample data with interest field
 const SAMPLE_IMAGES = [
   {
     id: "1",
@@ -42,6 +43,7 @@ const SAMPLE_IMAGES = [
     likes: 423,
     username: "skyartist",
     timestamp: "2 hours ago",
+    interest: "animals",
   },
   {
     id: "2",
@@ -53,6 +55,7 @@ const SAMPLE_IMAGES = [
     likes: 519,
     username: "cosmic_scholar",
     timestamp: "1 day ago",
+    interest: "architecture",
   },
   {
     id: "3",
@@ -64,6 +67,7 @@ const SAMPLE_IMAGES = [
     likes: 352,
     username: "micro_worlds",
     timestamp: "2 days ago",
+    interest: "abstract",
   },
   {
     id: "4",
@@ -75,6 +79,7 @@ const SAMPLE_IMAGES = [
     likes: 783,
     username: "art_historian",
     timestamp: "3 days ago",
+    interest: "animals",
   },
   {
     id: "5",
@@ -86,6 +91,7 @@ const SAMPLE_IMAGES = [
     likes: 672,
     username: "nature_tech",
     timestamp: "4 days ago",
+    interest: "nature",
   },
   {
     id: "6",
@@ -97,6 +103,7 @@ const SAMPLE_IMAGES = [
     likes: 492,
     username: "dream_diver",
     timestamp: "5 days ago",
+    interest: "nature",
   },
   {
     id: "7",
@@ -108,11 +115,13 @@ const SAMPLE_IMAGES = [
     likes: 327,
     username: "star_gazer",
     timestamp: "1 week ago",
+    interest: "space",
   },
 ];
 
 export default function ExploreScreen() {
   const [images, setImages] = useState<FeedItem[]>([]);
+  const [filteredImages, setFilteredImages] = useState<FeedItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState<{ [key: string]: boolean }>({});
@@ -121,6 +130,9 @@ export default function ExploreScreen() {
   const [selectedInterests, setSelectedInterests] = useState<UserInterest[]>(
     []
   );
+  const [activeInterestFilter, setActiveInterestFilter] = useState<
+    string | null
+  >(null);
   const [firstLoad, setFirstLoad] = useState(true);
 
   const colorScheme = useColorScheme();
@@ -151,6 +163,7 @@ export default function ExploreScreen() {
         console.error("Error initializing explore screen:", error);
         // Fallback to sample data
         setImages(SAMPLE_IMAGES as FeedItem[]);
+        setFilteredImages(SAMPLE_IMAGES as FeedItem[]);
       } finally {
         setLoading(false);
       }
@@ -158,6 +171,18 @@ export default function ExploreScreen() {
 
     initialize();
   }, [firstLoad]);
+
+  // Apply filter when active interest changes or images change
+  useEffect(() => {
+    if (activeInterestFilter) {
+      const filtered = images.filter(
+        (item) => item.interest === activeInterestFilter
+      );
+      setFilteredImages(filtered.length > 0 ? filtered : images);
+    } else {
+      setFilteredImages(images);
+    }
+  }, [activeInterestFilter, images]);
 
   // Load feed content from service
   const loadFeedContent = async (forceRefresh = false) => {
@@ -171,13 +196,22 @@ export default function ExploreScreen() {
 
       if (generatedItems.length > 0) {
         setImages(generatedItems);
+        setFilteredImages(
+          activeInterestFilter
+            ? generatedItems.filter(
+                (item) => item.interest === activeInterestFilter
+              )
+            : generatedItems
+        );
       } else {
         // Fallback to sample data if nothing was generated
         setImages(SAMPLE_IMAGES as FeedItem[]);
+        setFilteredImages(SAMPLE_IMAGES as FeedItem[]);
       }
     } catch (error) {
       console.error("Error loading feed content:", error);
       setImages(SAMPLE_IMAGES as FeedItem[]);
+      setFilteredImages(SAMPLE_IMAGES as FeedItem[]);
     } finally {
       setLoading(false);
     }
@@ -201,7 +235,13 @@ export default function ExploreScreen() {
       id: `new-${index}-${Date.now()}`,
       timestamp: "Just now",
     }));
-    setImages([...images, ...moreImages.slice(0, 3)]);
+    const newImages = [...images, ...moreImages.slice(0, 3)];
+    setImages(newImages);
+    setFilteredImages(
+      activeInterestFilter
+        ? newImages.filter((item) => item.interest === activeInterestFilter)
+        : newImages
+    );
     setLoading(false);
   };
 
@@ -215,7 +255,7 @@ export default function ExploreScreen() {
 
   const handleImageGenerated = (imageUrl: string, prompt: string) => {
     // Add the new image to the top of the feed
-    const newImage = {
+    const newImage: FeedItem = {
       id: `gen-${Date.now()}`,
       imageUrl,
       prompt,
@@ -223,9 +263,16 @@ export default function ExploreScreen() {
       likes: 0,
       username: "you", // In a real app, this would be the user's username
       timestamp: "Just now",
+      // No interest assigned for user-generated images
     };
 
-    setImages([newImage, ...images]);
+    const newImages = [newImage, ...images];
+    setImages(newImages);
+    setFilteredImages(
+      activeInterestFilter
+        ? newImages.filter((item) => item.interest === activeInterestFilter)
+        : newImages
+    );
     setShowGenerator(false);
 
     // Show success notification
@@ -246,14 +293,85 @@ export default function ExploreScreen() {
       setSelectedInterests(interests);
       await userPreferencesService.updateInterests(interests);
       setShowInterestSelector(false);
+      setActiveInterestFilter(null);
 
       // Generate feed content based on new interests
       await loadFeedContent(true);
     }
   };
 
+  // Handle interest filter click
+  const handleInterestFilterClick = (interestId: string | null) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActiveInterestFilter(
+      activeInterestFilter === interestId ? null : interestId
+    );
+  };
+
+  // Get interest name from ID
+  const getInterestName = (interestId: string | undefined): string => {
+    if (!interestId) return "Recommended";
+    const interest = selectedInterests.find((i) => i.id === interestId);
+    return interest ? interest.name : "Recommended";
+  };
+
+  const renderInterestFilterBar = () => {
+    if (selectedInterests.length === 0) return null;
+
+    return (
+      <View style={styles.interestFilterBarContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.interestFilterBar}
+        >
+          <TouchableOpacity
+            style={[
+              styles.interestFilterItem,
+              activeInterestFilter === null && styles.activeInterestFilter,
+            ]}
+            onPress={() => handleInterestFilterClick(null)}
+          >
+            <ThemedText
+              style={[
+                styles.interestFilterText,
+                activeInterestFilter === null &&
+                  styles.activeInterestFilterText,
+              ]}
+            >
+              All
+            </ThemedText>
+          </TouchableOpacity>
+
+          {selectedInterests.map((interest) => (
+            <TouchableOpacity
+              key={interest.id}
+              style={[
+                styles.interestFilterItem,
+                activeInterestFilter === interest.id &&
+                  styles.activeInterestFilter,
+              ]}
+              onPress={() => handleInterestFilterClick(interest.id)}
+            >
+              <ThemedText
+                style={[
+                  styles.interestFilterText,
+                  activeInterestFilter === interest.id &&
+                    styles.activeInterestFilterText,
+                ]}
+              >
+                {interest.name}
+              </ThemedText>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
   const renderImageCard = ({ item }: { item: FeedItem }) => {
     const isLiked = liked[item.id] || false;
+    const interestName = getInterestName(item.interest);
 
     return (
       <ThemedView style={styles.card}>
@@ -300,6 +418,24 @@ export default function ExploreScreen() {
             contentFit="cover"
             transition={300}
           />
+          {item.interest && (
+            <TouchableOpacity
+              style={styles.interestTag}
+              onPress={() =>
+                item.interest && handleInterestFilterClick(item.interest)
+              }
+            >
+              <MaterialCommunityIcons
+                name="tag"
+                size={14}
+                color="#fff"
+                style={styles.interestTagIcon}
+              />
+              <ThemedText style={styles.interestTagText}>
+                {interestName}
+              </ThemedText>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.cardFooter}>
@@ -374,6 +510,8 @@ export default function ExploreScreen() {
         </View>
       </ThemedView>
 
+      {renderInterestFilterBar()}
+
       {loading && images.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator
@@ -386,7 +524,7 @@ export default function ExploreScreen() {
         </View>
       ) : (
         <FlatList
-          data={images}
+          data={filteredImages}
           renderItem={renderImageCard}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
@@ -404,8 +542,23 @@ export default function ExploreScreen() {
           }
           onEndReached={loadMoreImages}
           onEndReachedThreshold={0.3}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons
+                name="image-filter-hdr"
+                size={48}
+                color={Colors[colorScheme ?? "light"].text}
+                style={{ opacity: 0.5 }}
+              />
+              <ThemedText style={styles.emptyText}>
+                {activeInterestFilter
+                  ? "No images for this interest yet. Try another filter or pull to refresh."
+                  : "No images found. Pull to refresh."}
+              </ThemedText>
+            </View>
+          }
           ListFooterComponent={
-            loading ? (
+            loading && filteredImages.length > 0 ? (
               <View style={styles.loadingFooter}>
                 <ActivityIndicator
                   size="small"
@@ -557,6 +710,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 4,
   },
+  interestFilterBarContainer: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.1)",
+  },
+  interestFilterBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  interestFilterItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.05)",
+  },
+  activeInterestFilter: {
+    backgroundColor: Colors.light.tint,
+  },
+  interestFilterText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  activeInterestFilterText: {
+    color: "#fff",
+  },
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
@@ -569,6 +747,16 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 10,
+    opacity: 0.7,
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyText: {
+    marginTop: 12,
+    textAlign: "center",
     opacity: 0.7,
   },
   card: {
@@ -633,11 +821,31 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 12,
     width: "100%",
+    position: "relative",
   },
   image: {
     width: "100%",
     aspectRatio: 1,
     borderRadius: 10,
+  },
+  interestTag: {
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  interestTagIcon: {
+    marginRight: 4,
+  },
+  interestTagText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "500",
   },
   cardFooter: {
     flexDirection: "row",

@@ -8,6 +8,7 @@ import {
   ExploreIcon,
   HomeIcon,
   ImageGeneratorIcon,
+  TextGeneratorIcon,
 } from "@/components/ui/TabBarIcon";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
@@ -68,6 +69,19 @@ export default function TabLayout() {
             paddingTop: 8,
           },
           tabBarIcon: ({ focused }) => <ImageGeneratorIcon focused={focused} />,
+          tabBarButton: (props) => <HapticTab {...props} />,
+        }}
+      />
+      <Tabs.Screen
+        name="aitext"
+        options={{
+          title: "AI Text",
+          tabBarItemStyle: {
+            borderTopColor: "transparent",
+            borderTopWidth: 2,
+            paddingTop: 8,
+          },
+          tabBarIcon: ({ focused }) => <TextGeneratorIcon focused={focused} />,
           tabBarButton: (props) => <HapticTab {...props} />,
         }}
       />

@@ -41,6 +41,22 @@ export function ImageGeneratorIcon({ focused }: TabBarIconProps) {
   );
 }
 
+export function TextGeneratorIcon({ focused }: TabBarIconProps) {
+  const colorScheme = useColorScheme();
+  const color = focused
+    ? Colors[colorScheme ?? "light"].tint
+    : Colors[colorScheme ?? "light"].tabIconDefault;
+
+  return (
+    <MaterialCommunityIcons
+      name="text-box-plus"
+      size={24}
+      color={color}
+      style={styles.icon}
+    />
+  );
+}
+
 export function ExploreIcon({ focused }: TabBarIconProps) {
   const colorScheme = useColorScheme();
   const color = focused
