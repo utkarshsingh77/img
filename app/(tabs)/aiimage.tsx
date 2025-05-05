@@ -251,8 +251,8 @@ export default function AIImageScreen() {
     setPrompt(selectedPrompt);
   };
 
-  const toggleModel = () => {
-    setModel(model === "dall-e-3" ? "gpt-image-1" : "dall-e-3");
+  const toggleModel = (newModel: ImageModel) => {
+    setModel(newModel);
   };
 
   const renderSettingsModal = () => {
@@ -276,18 +276,71 @@ export default function AIImageScreen() {
 
             <ThemedView style={styles.settingItem}>
               <ThemedText type="subtitle">Model</ThemedText>
-              <View style={styles.modelToggle}>
-                <ThemedText>DALL-E 3</ThemedText>
-                <Switch
-                  value={model === "gpt-image-1"}
-                  onValueChange={toggleModel}
-                  trackColor={{
-                    false: "#767577",
-                    true: Colors[colorScheme ?? "light"].tint,
-                  }}
-                />
-                <ThemedText>GPT Image</ThemedText>
+              <View style={styles.buttonGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.modelButton,
+                    model === "dall-e-3" && styles.selectedButton,
+                    { marginRight: 8 },
+                  ]}
+                  onPress={() => toggleModel("dall-e-3")}
+                >
+                  <View style={styles.modelButtonContent}>
+                    <MaterialCommunityIcons
+                      name="image-filter-hdr"
+                      size={24}
+                      color={
+                        model === "dall-e-3"
+                          ? "white"
+                          : Colors[colorScheme ?? "light"].text
+                      }
+                    />
+                    <ThemedText
+                      style={[
+                        styles.modelButtonText,
+                        model === "dall-e-3" && styles.selectedText,
+                      ]}
+                    >
+                      DALL-E 3
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.modelButton,
+                    model === "gpt-image-1" && styles.selectedButton,
+                    { marginLeft: 8 },
+                  ]}
+                  onPress={() => toggleModel("gpt-image-1")}
+                >
+                  <View style={styles.modelButtonContent}>
+                    <MaterialCommunityIcons
+                      name="image-edit"
+                      size={24}
+                      color={
+                        model === "gpt-image-1"
+                          ? "white"
+                          : Colors[colorScheme ?? "light"].text
+                      }
+                    />
+                    <ThemedText
+                      style={[
+                        styles.modelButtonText,
+                        model === "gpt-image-1" && styles.selectedText,
+                      ]}
+                    >
+                      GPT Image
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
               </View>
+
+              <ThemedText style={styles.modelDescription}>
+                {model === "dall-e-3"
+                  ? "DALL-E 3 creates detailed, photorealistic images from text descriptions. Best for high-quality single images with precise details. Limited customization options."
+                  : "GPT Image offers transparent backgrounds, multiple aspect ratios, and quality settings. More versatile with modern style. Customize settings below."}
+              </ThemedText>
             </ThemedView>
 
             {model === "gpt-image-1" && (
@@ -495,11 +548,26 @@ export default function AIImageScreen() {
                 />
               </TouchableOpacity>
             </View>
-            <View style={styles.modelBadge}>
+            <TouchableOpacity
+              style={styles.modelBadge}
+              onPress={() => setShowSettings(true)}
+            >
+              <MaterialCommunityIcons
+                name={model === "dall-e-3" ? "image-filter-hdr" : "image-edit"}
+                size={18}
+                color={Colors[colorScheme ?? "light"].tint}
+                style={styles.modelBadgeIcon}
+              />
               <ThemedText style={styles.modelBadgeText}>
-                {model === "dall-e-3" ? "DALL-E 3" : "GPT Image"}
+                Using {model === "dall-e-3" ? "DALL-E 3" : "GPT Image"}
               </ThemedText>
-            </View>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={14}
+                color={Colors[colorScheme ?? "light"].text}
+                style={{ marginLeft: 4, opacity: 0.5 }}
+              />
+            </TouchableOpacity>
           </ThemedView>
 
           <ThemedView style={styles.formContainer}>
@@ -663,15 +731,23 @@ const styles = StyleSheet.create({
   },
   modelBadge: {
     backgroundColor: "rgba(10, 126, 164, 0.1)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 12,
     alignSelf: "flex-start",
     marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(10, 126, 164, 0.2)",
+  },
+  modelBadgeIcon: {
+    marginRight: 6,
   },
   modelBadgeText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "500",
+    color: Colors.light.tint,
   },
   settingsButton: {
     padding: 8,
@@ -768,12 +844,6 @@ const styles = StyleSheet.create({
   settingItem: {
     marginBottom: 16,
   },
-  modelToggle: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 8,
-  },
   buttonGroup: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -839,5 +909,36 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     textAlign: "center",
+  },
+  modelButton: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    flex: 1,
+    marginBottom: 8,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  modelButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modelButtonText: {
+    fontWeight: "600",
+    marginLeft: 10,
+    fontSize: 14,
+  },
+  modelDescription: {
+    fontSize: 12,
+    opacity: 0.7,
+    marginTop: 10,
+    paddingHorizontal: 4,
+    lineHeight: 18,
   },
 });

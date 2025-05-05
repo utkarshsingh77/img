@@ -1,110 +1,368 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
+import React, { useState } from "react";
+import {
+  ActivityIndicator,
+  Dimensions,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Collapsible } from '@/components/Collapsible';
-import { ExternalLink } from '@/components/ExternalLink';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { IconSymbol } from '@/components/ui/IconSymbol';
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { Colors } from "@/constants/Colors";
+import { useColorScheme } from "@/hooks/useColorScheme";
 
-export default function TabTwoScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Explore</ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image source={require('@/assets/images/react-logo.png')} style={{ alignSelf: 'center' }} />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Custom fonts">
-        <ThemedText>
-          Open <ThemedText type="defaultSemiBold">app/_layout.tsx</ThemedText> to see how to load{' '}
-          <ThemedText style={{ fontFamily: 'SpaceMono' }}>
-            custom fonts such as this one.
-          </ThemedText>
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/versions/latest/sdk/font">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful <ThemedText type="defaultSemiBold">react-native-reanimated</ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
+// Sample data for the AI images feed
+// In a real app, this would come from a backend API
+const SAMPLE_IMAGES = [
+  {
+    id: "1",
+    imageUrl:
+      "https://cdn.openai.com/labs/images/A%20photo%20of%20a%20white%20fur%20monster%20standing%20in%20a%20purple%20room.webp?v=1",
+    prompt: "A photo of a white fur monster standing in a purple room",
+    model: "DALL-E 3",
+    likes: 42,
+    username: "creative_ai",
+    timestamp: "2 hours ago",
+  },
+  {
+    id: "2",
+    imageUrl:
+      "https://cdn.openai.com/labs/images/An%20astronaut%20riding%20a%20green%20horse.webp?v=1",
+    prompt: "An astronaut riding a green horse",
+    model: "GPT Image",
+    likes: 128,
+    username: "space_explorer",
+    timestamp: "5 hours ago",
+  },
+  {
+    id: "3",
+    imageUrl:
+      "https://cdn.openai.com/labs/images/A%20bowl%20of%20soup%20that%20looks%20like%20a%20monster.webp?v=1",
+    prompt: "A bowl of soup that looks like a monster",
+    model: "DALL-E 3",
+    likes: 89,
+    username: "food_artist",
+    timestamp: "1 day ago",
+  },
+  {
+    id: "4",
+    imageUrl:
+      "https://cdn.openai.com/labs/images/A%20photo%20of%20a%20teddy%20bear%20on%20a%20skateboard%20in%20Times%20Square.webp?v=1",
+    prompt: "A photo of a teddy bear on a skateboard in Times Square",
+    model: "GPT Image",
+    likes: 213,
+    username: "urban_dreamer",
+    timestamp: "2 days ago",
+  },
+  {
+    id: "5",
+    imageUrl:
+      "https://cdn.openai.com/labs/images/A%20red%20apple%20with%20a%20bite%20taken%20out%20of%20it.webp?v=1",
+    prompt:
+      "A red apple with a bite taken out of it, in the style of a 3D render",
+    model: "DALL-E 3",
+    likes: 76,
+    username: "minimal_art",
+    timestamp: "3 days ago",
+  },
+];
+
+export default function ExploreScreen() {
+  const [images, setImages] = useState(SAMPLE_IMAGES);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [liked, setLiked] = useState<{ [key: string]: boolean }>({});
+  const colorScheme = useColorScheme();
+  const { bottom } = useSafeAreaInsets();
+  const windowWidth = Dimensions.get("window").width;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    // In a real app, you would fetch new data here
+    // Simulate a network request
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    setRefreshing(false);
+  };
+
+  const loadMoreImages = async () => {
+    if (loading) return;
+    setLoading(true);
+    // In a real app, you would fetch more data here
+    // Simulate a network request
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // Add more images by duplicating existing ones with new IDs
+    const moreImages = images.map((item, index) => ({
+      ...item,
+      id: `new-${index}-${Date.now()}`,
+      timestamp: "Just now",
+    }));
+    setImages([...images, ...moreImages.slice(0, 3)]);
+    setLoading(false);
+  };
+
+  const toggleLike = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setLiked((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const renderImageCard = ({ item }: { item: (typeof SAMPLE_IMAGES)[0] }) => {
+    const isLiked = liked[item.id] || false;
+
+    return (
+      <ThemedView style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.userInfo}>
+            <View style={styles.avatar}>
+              <ThemedText style={styles.avatarText}>
+                {item.username.charAt(0).toUpperCase()}
+              </ThemedText>
+            </View>
+            <View>
+              <ThemedText style={styles.username}>{item.username}</ThemedText>
+              <ThemedText style={styles.timestamp}>{item.timestamp}</ThemedText>
+            </View>
+          </View>
+          <View style={styles.modelBadge}>
+            <MaterialCommunityIcons
+              name={
+                item.model === "DALL-E 3" ? "image-filter-hdr" : "image-edit"
+              }
+              size={14}
+              color={Colors[colorScheme ?? "light"].text}
+              style={styles.modelBadgeIcon}
+            />
+            <ThemedText style={styles.modelBadgeText}>{item.model}</ThemedText>
+          </View>
+        </View>
+
+        <View style={styles.imageContainer}>
+          <Image
+            source={{ uri: item.imageUrl }}
+            style={[styles.image, { width: windowWidth - 48 }]}
+            contentFit="cover"
+            transition={300}
+          />
+        </View>
+
+        <View style={styles.cardFooter}>
+          <TouchableOpacity
+            style={styles.likeButton}
+            onPress={() => toggleLike(item.id)}
+          >
+            <MaterialCommunityIcons
+              name={isLiked ? "heart" : "heart-outline"}
+              size={24}
+              color={isLiked ? "#FF4757" : Colors[colorScheme ?? "light"].text}
+            />
+            <ThemedText style={styles.likeCount}>
+              {isLiked ? item.likes + 1 : item.likes}
             </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton}>
+            <MaterialCommunityIcons
+              name="share-variant-outline"
+              size={22}
+              color={Colors[colorScheme ?? "light"].text}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton}>
+            <MaterialCommunityIcons
+              name="bookmark-outline"
+              size={22}
+              color={Colors[colorScheme ?? "light"].text}
+            />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.promptContainer}>
+          <ThemedText style={styles.prompt}>
+            &ldquo;{item.prompt}&rdquo;
+          </ThemedText>
+        </View>
+      </ThemedView>
+    );
+  };
+
+  return (
+    <ThemedView style={styles.container}>
+      <ThemedView style={styles.header}>
+        <ThemedText type="title">Explore AI Art</ThemedText>
+        <TouchableOpacity style={styles.headerButton}>
+          <MaterialCommunityIcons
+            name="tune"
+            size={24}
+            color={Colors[colorScheme ?? "light"].text}
+          />
+        </TouchableOpacity>
+      </ThemedView>
+
+      <FlatList
+        data={images}
+        renderItem={renderImageCard}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: bottom + 20 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={Colors[colorScheme ?? "light"].tint}
+            colors={[Colors[colorScheme ?? "light"].tint]}
+          />
+        }
+        onEndReached={loadMoreImages}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={
+          loading ? (
+            <View style={styles.loadingFooter}>
+              <ActivityIndicator
+                size="small"
+                color={Colors[colorScheme ?? "light"].tint}
+              />
+              <ThemedText style={styles.loadingText}>
+                Loading more...
+              </ThemedText>
+            </View>
+          ) : null
+        }
+      />
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
   },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.1)",
+  },
+  headerButton: {
+    padding: 8,
+  },
+  listContent: {
+    padding: 16,
+    gap: 16,
+  },
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  userInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#0A7EA4",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  avatarText: {
+    color: "white",
+    fontWeight: "600",
+  },
+  username: {
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  timestamp: {
+    fontSize: 12,
+    opacity: 0.6,
+  },
+  modelBadge: {
+    backgroundColor: "rgba(10, 126, 164, 0.1)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  modelBadgeIcon: {
+    marginRight: 4,
+  },
+  modelBadgeText: {
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  imageContainer: {
+    borderRadius: 10,
+    overflow: "hidden",
+    marginBottom: 12,
+  },
+  image: {
+    aspectRatio: 1,
+    borderRadius: 10,
+  },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  likeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  likeCount: {
+    marginLeft: 4,
+    fontSize: 14,
+  },
+  actionButton: {
+    marginHorizontal: 8,
+  },
+  promptContainer: {
+    marginTop: 4,
+  },
+  prompt: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontStyle: "italic",
+  },
+  loadingFooter: {
+    padding: 16,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+  loadingText: {
+    marginLeft: 8,
+    fontSize: 12,
+    opacity: 0.7,
   },
 });
