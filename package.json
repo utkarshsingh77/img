@@ -50,6 +50,7 @@
     "react-native-view-shot": "^4.0.3",
     "react-native-web": "~0.20.0",
     "react-native-webview": "13.13.5",
+    "replicate": "^1.0.1",
     "stream-browserify": "^3.0.0",
     "util": "^0.12.5"
   },

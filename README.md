@@ -48,3 +48,61 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+# AI Image Feed App
+
+This app showcases AI-generated images in a social media feed style, and allows users to create their own AI-generated images using the Replicate API with the flux-schnell model.
+
+## Environment Setup
+
+### 1. Set up Replicate API Token
+
+You need to set the `REPLICATE_API_TOKEN` environment variable. You can do this in several ways:
+
+**Method 1: Export in your terminal (temporary, session only)**
+
+```bash
+export REPLICATE_API_TOKEN=<paste-your-token-here>
+```
+
+**Method 2: Add to your shell configuration file (more permanent)**
+
+Add the following line to your `~/.bash_profile`, `~/.zshrc`, or similar shell configuration file:
+
+```bash
+export REPLICATE_API_TOKEN=<paste-your-token-here>
+```
+
+**Method 3: Create a .env file (recommended for development)**
+
+Create a `.env` file in the root directory of your project with:
+
+```
+REPLICATE_API_TOKEN=<paste-your-token-here>
+```
+
+You might need additional setup to load environment variables from a .env file in your project.
+
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+## Running the App
+
+```bash
+npm start
+```
+
+## Features
+
+- View AI-generated images in a social feed
+- Like, share and bookmark images
+- Create your own AI-generated images with the flux-schnell model from Replicate
+- Pull to refresh for new content
+- Infinite scrolling to load more images
+
+## Credits
+
+This app uses the [flux-schnell](https://replicate.com/black-forest-labs/flux-schnell) model from Black Forest Labs on Replicate.
