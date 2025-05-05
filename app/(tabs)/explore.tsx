@@ -1,11 +1,10 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   FlatList,
   Modal,
   RefreshControl,
@@ -17,13 +16,21 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ImageGenerator } from "@/components/ImageGenerator";
+import { InterestSelector } from "@/components/InterestSelector";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import {
+  feedGenerationService,
+  FeedItem,
+} from "@/services/feedGenerationService";
+import {
+  UserInterest,
+  userPreferencesService,
+} from "@/services/userPreferencesService";
 
-// Sample data for the AI images feed
-// In a real app, this would come from a backend API
+// Sample data as fallback
 const SAMPLE_IMAGES = [
   {
     id: "1",
@@ -105,20 +112,80 @@ const SAMPLE_IMAGES = [
 ];
 
 export default function ExploreScreen() {
-  const [images, setImages] = useState(SAMPLE_IMAGES);
+  const [images, setImages] = useState<FeedItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState<{ [key: string]: boolean }>({});
   const [showGenerator, setShowGenerator] = useState(false);
+  const [showInterestSelector, setShowInterestSelector] = useState(false);
+  const [selectedInterests, setSelectedInterests] = useState<UserInterest[]>(
+    []
+  );
+  const [firstLoad, setFirstLoad] = useState(true);
+
   const colorScheme = useColorScheme();
   const { top, bottom } = useSafeAreaInsets();
-  const windowWidth = Dimensions.get("window").width;
+
+  // Load images and check if we need to show the interest selector
+  useEffect(() => {
+    async function initialize() {
+      try {
+        setLoading(true);
+
+        // Check if user has interests
+        const userInterests = await userPreferencesService.getUserInterests();
+        setSelectedInterests(userInterests);
+
+        // Show interest selector if this is first launch and no interests are set
+        const shouldShowInterestSelector =
+          firstLoad && userInterests.length === 0;
+        setShowInterestSelector(shouldShowInterestSelector);
+
+        if (!shouldShowInterestSelector) {
+          // Load feed content
+          await loadFeedContent();
+        }
+
+        setFirstLoad(false);
+      } catch (error) {
+        console.error("Error initializing explore screen:", error);
+        // Fallback to sample data
+        setImages(SAMPLE_IMAGES as FeedItem[]);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    initialize();
+  }, [firstLoad]);
+
+  // Load feed content from service
+  const loadFeedContent = async (forceRefresh = false) => {
+    try {
+      setLoading(true);
+
+      // Generate feed content
+      const generatedItems = await feedGenerationService.generateFeedContent(
+        forceRefresh
+      );
+
+      if (generatedItems.length > 0) {
+        setImages(generatedItems);
+      } else {
+        // Fallback to sample data if nothing was generated
+        setImages(SAMPLE_IMAGES as FeedItem[]);
+      }
+    } catch (error) {
+      console.error("Error loading feed content:", error);
+      setImages(SAMPLE_IMAGES as FeedItem[]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    // In a real app, you would fetch new data here
-    // Simulate a network request
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await loadFeedContent(true); // Force refresh
     setRefreshing(false);
   };
 
@@ -173,7 +240,19 @@ export default function ExploreScreen() {
     );
   };
 
-  const renderImageCard = ({ item }: { item: (typeof SAMPLE_IMAGES)[0] }) => {
+  // Handle saving interests
+  const handleInterestsSelected = async (interests: UserInterest[]) => {
+    if (interests.length >= 1) {
+      setSelectedInterests(interests);
+      await userPreferencesService.updateInterests(interests);
+      setShowInterestSelector(false);
+
+      // Generate feed content based on new interests
+      await loadFeedContent(true);
+    }
+  };
+
+  const renderImageCard = ({ item }: { item: FeedItem }) => {
     const isLiked = liked[item.id] || false;
 
     return (
@@ -271,50 +350,75 @@ export default function ExploreScreen() {
         <ThemedText type="title" style={styles.headerTitle}>
           Explore
         </ThemedText>
-        <TouchableOpacity
-          style={styles.createButton}
-          onPress={() => setShowGenerator(true)}
-        >
-          <View style={styles.createButtonContent}>
-            <MaterialCommunityIcons name="plus" size={16} color="#fff" />
-            <ThemedText style={styles.createButtonText}>Create</ThemedText>
-          </View>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.interestsButton}
+            onPress={() => setShowInterestSelector(true)}
+          >
+            <MaterialCommunityIcons
+              name="tag-multiple"
+              size={22}
+              color={Colors[colorScheme ?? "light"].text}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => setShowGenerator(true)}
+          >
+            <View style={styles.createButtonContent}>
+              <MaterialCommunityIcons name="plus" size={16} color="#fff" />
+              <ThemedText style={styles.createButtonText}>Create</ThemedText>
+            </View>
+          </TouchableOpacity>
+        </View>
       </ThemedView>
 
-      <FlatList
-        data={images}
-        renderItem={renderImageCard}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: bottom + 20 },
-        ]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={Colors[colorScheme ?? "light"].tint}
-            colors={[Colors[colorScheme ?? "light"].tint]}
+      {loading && images.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator
+            size="large"
+            color={Colors[colorScheme ?? "light"].tint}
           />
-        }
-        onEndReached={loadMoreImages}
-        onEndReachedThreshold={0.3}
-        ListFooterComponent={
-          loading ? (
-            <View style={styles.loadingFooter}>
-              <ActivityIndicator
-                size="small"
-                color={Colors[colorScheme ?? "light"].tint}
-              />
-              <ThemedText style={styles.loadingText}>
-                Loading more...
-              </ThemedText>
-            </View>
-          ) : null
-        }
-      />
+          <ThemedText style={styles.loadingText}>
+            Generating personalized feed...
+          </ThemedText>
+        </View>
+      ) : (
+        <FlatList
+          data={images}
+          renderItem={renderImageCard}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: bottom + 20 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={Colors[colorScheme ?? "light"].tint}
+              colors={[Colors[colorScheme ?? "light"].tint]}
+            />
+          }
+          onEndReached={loadMoreImages}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={
+            loading ? (
+              <View style={styles.loadingFooter}>
+                <ActivityIndicator
+                  size="small"
+                  color={Colors[colorScheme ?? "light"].tint}
+                />
+                <ThemedText style={styles.loadingText}>
+                  Loading more...
+                </ThemedText>
+              </View>
+            ) : null
+          }
+        />
+      )}
 
       {/* Image Generator Modal */}
       <Modal
@@ -345,6 +449,66 @@ export default function ExploreScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Interest Selector Modal */}
+      <Modal
+        visible={showInterestSelector}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          // Only allow closing if not first load or if interests are selected
+          if (!firstLoad || selectedInterests.length > 0) {
+            setShowInterestSelector(false);
+          }
+        }}
+      >
+        <View style={styles.modalContainer}>
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: Colors[colorScheme ?? "light"].background },
+            ]}
+          >
+            <View style={styles.interestSelectorHeader}>
+              <ThemedText type="title">Your Interests</ThemedText>
+
+              {/* Only show close button if not first load or if interests already selected */}
+              {(!firstLoad || selectedInterests.length > 0) && (
+                <TouchableOpacity
+                  onPress={() => setShowInterestSelector(false)}
+                  style={styles.closeButton}
+                >
+                  <MaterialCommunityIcons
+                    name="close"
+                    size={24}
+                    color={Colors[colorScheme ?? "light"].text}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <InterestSelector
+              onInterestsSelected={handleInterestsSelected}
+              minSelection={1}
+              maxSelection={5}
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.saveButton,
+                { backgroundColor: Colors[colorScheme ?? "light"].tint },
+                selectedInterests.length === 0 && styles.disabledButton,
+              ]}
+              onPress={() => handleInterestsSelected(selectedInterests)}
+              disabled={selectedInterests.length === 0}
+            >
+              <ThemedText style={styles.saveButtonText}>
+                Save & Generate Feed
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -366,6 +530,14 @@ const styles = StyleSheet.create({
     fontSize: 34,
     fontWeight: "bold",
     letterSpacing: -1,
+  },
+  headerButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  interestsButton: {
+    padding: 8,
+    marginRight: 8,
   },
   createButton: {
     backgroundColor: Colors.light.tint,
@@ -389,6 +561,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     gap: 24,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 10,
+    opacity: 0.7,
   },
   card: {
     borderRadius: 20,
@@ -492,11 +673,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
   },
-  loadingText: {
-    marginLeft: 8,
-    fontSize: 12,
-    opacity: 0.7,
-  },
   modalContainer: {
     flex: 1,
     justifyContent: "center",
@@ -514,5 +690,30 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+  },
+  interestSelectorHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.1)",
+  },
+  closeButton: {
+    padding: 4,
+  },
+  saveButton: {
+    margin: 16,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  saveButtonText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });
